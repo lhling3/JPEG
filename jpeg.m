@@ -1,18 +1,18 @@
 I = imread('cameraman.tif'); 
 info=imfinfo('cameraman.tif');
-%ԭʼͼ��ΪRGBͼ��תΪ�Ҷ�ͼ
+%原始图像为RGB图像，转为灰度图
 A=double(I);
-%��dct�任��Ҫ��ͼ��תΪ˫���ȣ����ѵ�ƽƽ��128����λ
+%做dct变换需要把图像转为双精度，并把电平平移128个单位
 I=double(I)-128;
 %I=im2double(I);
 [H,L]=size(I);
-%8X8dct�任;DCTIΪͼ������DCT�任�����
-T=dctmtx(8);%����һ��8*8 DCT�任����
+%8X8dct变换;DCTI为图像做完DCT变换后矩阵
+T=dctmtx(8);%生成一个8*8 DCT变换矩阵
 
 %DCTI=blkproc(I,[8 8],'dct2');
-DCTI=blkproc(I,[8,8],'P1*x*P2',T,T');% x����ÿһ���ֳɵ�8*8��С�Ŀ飬P1*x*P2�൱�����ؿ�Ĵ���������p1=T p2=T',Ҳ����fun=p1*x*p2'=T*x*T'�Ĺ����ǽ�����ɢ���ұ任 B=T*I*T��
+DCTI=blkproc(I,[8,8],'P1*x*P2',T,T');% x就是每一个分成的8*8大小的块，P1*x*P2相当于像素块的处理函数，p1=T p2=T',也就是fun=p1*x*p2'=T*x*T'的功能是进行离散余弦变换 B=T*I*T’
 
-%������������,roΪ������������
+%亮度量化矩阵,ro为亮度量化矩阵
 ro=[16 11 10 16 24 40 51 61
     12 12 14 19 26 58 60 55
     14 13 16 24 40 57 69 56
@@ -22,13 +22,13 @@ ro=[16 11 10 16 24 40 51 61
     49 64 78 87 103 121 120 101
     72 92 95 98 112 100 103 99];
  
-%8X8������DCTI1ΪDCTI����������
+%8X8量化；DCTI1为DCTI的量化矩阵
 DCTI1=blkproc(DCTI,[8 8],'round(x./P1)',ro);
 
 DCTI2=[];
 DCTI2=DCTI1;
  
-%�ֳ�8*8�Ŀ飬�Ա���ȡDCϵ��
+%分成8*8的块，以便提取DC系数
 i=0;
 for h=1:H/8
     for l=1:L/8
@@ -37,18 +37,18 @@ for h=1:H/8
     end
 end
  
-%��ȡֱ��ϵ����DC����
+%提取直流系数到DC矩阵
 for i=1:H*L/64
     DC(:,:,i)=block88(1,1,i);
 end
  
-%DC�������õ�ǰDC-ǰһ��DCϵ�����統ǰϵ��Ϊ15ǰһ��DCϵ��Ϊ12����ѵ���������DC1��
+%DC矩阵中用当前DC-前一个DC系数，如当前系数为15前一个DC系数为12，则把得数保存至DC1中
   DC1(:,:,1)=DC(:,:,1);
 for i=2:H*L/64
     DC1(:,:,i)=DC(:,:,i)-DC(:,:,i-1);
 end
  
-%��DC1�������������,DCTI1��ʱ��DCϵ���滻��ľ���
+%把DC1添入量化后矩阵,DCTI1此时是DC系数替换后的矩阵
 h=H/8;
 l=L/8;
 k=0;
@@ -60,18 +60,18 @@ for i=1:h
 end
 k;    
  
-%����
+%编码
        ImageSeq=[];
        ImageLen=[]; 
        FFFF=[];
 for r=1:H/8
     for c=1:L/8
         
-        %�ѿ�������zigzag����
+        %把块矩阵进行zigzag编码
         m(1:8,1:8)=DCTI1((r-1)*8+1:(r-1)*8+8,(c-1)*8+1:(c-1)*8+8);
         k1=zigzag(m);
         
-        %�ҳ����һλ��Ϊ0��zigzag������±�
+        %找出最后一位不为0的zigzag矩阵的下标
         w=0;
         u=64;
         while u ~= 0
@@ -83,18 +83,18 @@ for r=1:H/8
        end
        w;
        
-       %63��ϵ��ȫΪ0���������w=0�޷����룬���԰Ѿ����±긳ֵΪ1
+       %63个系数全为0的情况，对w=0无法编码，所以把矩阵下标赋值为1
        if w==0 
           w=1;
        end
        
-       %wΪ���һ����Ϊ0��ϵ�����±꣬eΪzigzagɨ����tȥ��ĩβ��0��õ���һά������
+       %w为最后一个不为0的系数的下标，e为zigzag扫描结果t去掉末尾的0后得到的一维行向量
        e(w)=0;
        for i=1:w
            e(i)=k1(i);
        end
  
-       %��DCϵ������Huffman����
+       %对DC系数进行Huffman编码
        [DC_seq,DC_len]=DCEncoding(e(1));
        DC_seq;
        DC_len;
@@ -102,7 +102,7 @@ for r=1:H/8
       FFFF(r+c,2)=DC_len;
        
  
-       %zerolenΪ��0����0�ĸ�����amplitudeΪ��0�����0ֵ�ķ��ȣ�end=1010(�������EOB
+       %zerolen为连0串中0的个数，amplitude为连0串后非0值的幅度，end=1010(块结束符EOB
        end_seq=dec2bin(10,4);
        AC_seq=[];
        blockbit_seq=[];
@@ -111,7 +111,7 @@ for r=1:H/8
        zerolen=0;
        zeronumber=0;
               
-        %�ֿ���ֻ�е�һ��DCϵ��Ϊ0��Ϊ0��ACϵ��ȫΪ0�����
+        %分块中只有第一个DC系数为0或不为0，AC系数全为0的情况
        if numel(e)==1
           AC_seq=[];
           blockbit_seq=[DC_seq,end_seq];
@@ -120,7 +120,7 @@ for r=1:H/8
           for i=2:w
               if ( e(i)==0 & zeronumber<16)
                   zeronumber=zeronumber+1;
-                  %16����0�ı�ʾ
+                  %16连续0的表示
               elseif (e(i)==0 & zeronumber==16); 
                   bit_seq=dec2bin(2041,11);
                   zeronumber=1;
@@ -144,7 +144,7 @@ for r=1:H/8
        blockbit_seq=[DC_seq,AC_seq,end_seq];
        blockbit_len=length(blockbit_seq);
  
-       %blockbit_seqΪ������ı������У�blockbit_lenΪ������ı��볤��
+       %blockbit_seq为整个块的编码序列，blockbit_len为整个块的编码长度
        blockbit_seq;
        blockbit_len;
        ImageSeq=[ImageSeq,blockbit_seq];
@@ -153,10 +153,10 @@ for r=1:H/8
 end
     
  
-%�ָ�ͼ��
+%恢复图像
 Q=blkproc(DCTI2,[8,8],'x.*P1',ro);
  
-Recover=blkproc(Q,[8,8],'idct2(x)');
+Recover=blkproc(Q,[8,8],'idct2(x)');%恢复图像
 RecoverImage=round(Recover)+128;
  
 RecoverImage=uint8(RecoverImage);
